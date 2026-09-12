@@ -37,18 +37,23 @@ export class PostsController {
   static async createPost(req: Request, res: Response) {
     try {
       const file = (req as any).file as Express.Multer.File | undefined;
-      const { title, content, userId } = req.body;
+      const { title, content, userId, categoryId } = req.body;
 
-      // Validasi input wajib
       if (!title || !content) {
         return res.status(400).json({ message: 'title dan content wajib diisi' });
       }
 
-      // Idealnya userId diambil dari req.user (hasil auth middleware),
-      // bukan dari body — supaya user tidak bisa mengaku jadi user lain.
       const parsedUserId = Number(userId);
       if (!userId || Number.isNaN(parsedUserId)) {
         return res.status(400).json({ message: 'userId tidak valid' });
+      }
+
+      let parsedCategoryId: number | null = null;
+      if (categoryId !== undefined && categoryId !== null && categoryId !== '') {
+        parsedCategoryId = Number(categoryId);
+        if (Number.isNaN(parsedCategoryId)) {
+          return res.status(400).json({ message: 'categoryId tidak valid' });
+        }
       }
 
       let imageUrl: string | null = null;
@@ -69,6 +74,7 @@ export class PostsController {
         .insert(schema.postsTable)
         .values({
           userId: parsedUserId,
+          categoryId: parsedCategoryId,
           title,
           content,
           imageUrl,
@@ -78,7 +84,7 @@ export class PostsController {
 
       return res.status(201).json({
         message: 'Post berhasil dibuat',
-        data: { id: insertResult[0]?.id, title, content, imageUrl },
+        data: { id: insertResult[0]?.id, title, content, categoryId: parsedCategoryId, imageUrl },
       });
     } catch (error: unknown) {
       return res.status(500).json({ message: getErrorMessage(error) });
@@ -130,7 +136,7 @@ export class PostsController {
     try {
       const file = (req as any).file as Express.Multer.File | undefined;
       const { id } = req.params;
-      const { title, content } = req.body;
+      const { title, content, categoryId } = req.body;
 
       const numericId = Number(id);
       if (Number.isNaN(numericId)) {
@@ -150,6 +156,18 @@ export class PostsController {
       if (title) updateData.title = title;
       if (content) updateData.content = content;
 
+      if (categoryId !== undefined) {
+        if (categoryId === null || categoryId === '') {
+          updateData.categoryId = null;
+        } else {
+          const parsedCategoryId = Number(categoryId);
+          if (Number.isNaN(parsedCategoryId)) {
+            return res.status(400).json({ message: 'categoryId tidak valid' });
+          }
+          updateData.categoryId = parsedCategoryId;
+        }
+      }
+
       if (file) {
         if (!file.buffer) {
           return res.status(400).json({ message: 'File buffer tidak ditemukan.' });
@@ -158,8 +176,6 @@ export class PostsController {
         updateData.imageUrl = uploadResult.secure_url;
         updateData.imagePublicId = uploadResult.public_id;
 
-        // Hapus gambar lama di Cloudinary supaya tidak jadi sampah,
-        // sekarang bisa karena imagePublicId sudah disimpan di schema.
         const oldPublicId = existingPost[0].imagePublicId;
         if (oldPublicId) {
           try {
@@ -202,7 +218,6 @@ export class PostsController {
         return res.status(404).json({ message: 'Post tidak ditemukan' });
       }
 
-      // Hapus juga gambar di Cloudinary kalau ada
       const publicId = existingPost[0].imagePublicId;
       if (publicId) {
         try {
@@ -217,6 +232,129 @@ export class PostsController {
       return res.status(200).json({
         message: 'Post berhasil dihapus',
       });
+    } catch (error: unknown) {
+      return res.status(500).json({ message: getErrorMessage(error) });
+    }
+  }
+
+  // 6. CREATE CATEGORY
+  static async createCategory(req: Request, res: Response) {
+    try {
+      const { name } = req.body;
+      if (!name) {
+        return res.status(400).json({ message: 'name wajib diisi' });
+      }
+
+      const insertResult = await db
+        .insert(schema.categoriesTable)
+        .values({ name })
+        .$returningId();
+
+      return res.status(201).json({
+        message: 'Kategori berhasil dibuat',
+        data: { id: insertResult[0]?.id, name },
+      });
+    } catch (error: unknown) {
+      return res.status(500).json({ message: getErrorMessage(error) });
+    }
+  }
+
+  // 7. GET CATEGORIES
+  static async getCategories(req: Request, res: Response) {
+    try {
+      const allCategories = await db.select().from(schema.categoriesTable);
+      return res.status(200).json({
+        message: 'Berhasil mengambil semua kategori',
+        data: allCategories,
+      });
+    } catch (error: unknown) {
+      return res.status(500).json({ message: getErrorMessage(error) });
+    }
+  }
+
+  // 8. GET CATEGORY BY ID
+  static async getCategoryById(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const numericId = Number(id);
+      if (Number.isNaN(numericId)) {
+        return res.status(400).json({ message: 'id tidak valid' });
+      }
+
+      const result = await db
+        .select()
+        .from(schema.categoriesTable)
+        .where(eq(schema.categoriesTable.id, numericId));
+
+      if (result.length === 0) {
+        return res.status(404).json({ message: 'Kategori tidak ditemukan' });
+      }
+
+      return res.status(200).json({
+        message: 'Berhasil mengambil data kategori',
+        data: result[0],
+      });
+    } catch (error: unknown) {
+      return res.status(500).json({ message: getErrorMessage(error) });
+    }
+  }
+
+  // 9. UPDATE CATEGORY
+  static async updateCategory(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { name } = req.body;
+
+      const numericId = Number(id);
+      if (Number.isNaN(numericId)) {
+        return res.status(400).json({ message: 'id tidak valid' });
+      }
+
+      if (!name) {
+        return res.status(400).json({ message: 'name wajib diisi' });
+      }
+
+      const existingCategory = await db
+        .select()
+        .from(schema.categoriesTable)
+        .where(eq(schema.categoriesTable.id, numericId));
+
+      if (existingCategory.length === 0) {
+        return res.status(404).json({ message: 'Kategori tidak ditemukan' });
+      }
+
+      await db
+        .update(schema.categoriesTable)
+        .set({ name })
+        .where(eq(schema.categoriesTable.id, numericId));
+
+      return res.status(200).json({ message: 'Kategori berhasil diperbarui' });
+    } catch (error: unknown) {
+      return res.status(500).json({ message: getErrorMessage(error) });
+    }
+  }
+
+  // 10. DELETE CATEGORY
+  static async deleteCategory(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const numericId = Number(id);
+      if (Number.isNaN(numericId)) {
+        return res.status(400).json({ message: 'id tidak valid' });
+      }
+
+      const existingCategory = await db
+        .select()
+        .from(schema.categoriesTable)
+        .where(eq(schema.categoriesTable.id, numericId));
+
+      if (existingCategory.length === 0) {
+        return res.status(404).json({ message: 'Kategori tidak ditemukan' });
+      }
+
+      await db.delete(schema.categoriesTable).where(eq(schema.categoriesTable.id, numericId));
+
+      return res.status(200).json({ message: 'Kategori berhasil dihapus' });
     } catch (error: unknown) {
       return res.status(500).json({ message: getErrorMessage(error) });
     }

@@ -15,14 +15,23 @@ export const usersTable = mysqlTable("users", {
     updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
 });
 
+// CATEGORIES
+export const categoriesTable = mysqlTable("categories", {
+    id: int("id").autoincrement().primaryKey(),
+    name: varchar("name", { length: 100 }).notNull().unique(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
+});
+
 // POSTS
 export const postsTable = mysqlTable("posts", {
     id: int("id").autoincrement().primaryKey(),
     userId: int("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+    categoryId: int("category_id").references(() => categoriesTable.id, { onDelete: "set null" }),
     title: varchar("title", { length: 255 }).notNull(),
     content: text("content").notNull(),
-    imageUrl: text("image_url"), // Kolom untuk simpan URL gambar
-    imagePublicId: varchar("image_public_id", { length: 255 }), // Kolom untuk simpan Public ID Cloudinary
+    imageUrl: text("image_url"),
+    imagePublicId: varchar("image_public_id", { length: 255 }),
     status: mysqlEnum("status", POST_STATUS).notNull().default("published"),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
