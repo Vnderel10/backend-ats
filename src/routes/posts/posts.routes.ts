@@ -10,7 +10,6 @@ import { uploadSingleImage } from "../../middleware/upload.middleware";
 
 const router = Router();
 
-// ===== POST ROUTES =====
 router.post("/posts", uploadSingleImage, createPost);
 router.get("/posts", getPosts);
 router.get("/posts/:id", getPostById);
